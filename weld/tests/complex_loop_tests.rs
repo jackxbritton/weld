@@ -255,3 +255,43 @@ fn appender_and_dictmerger_loop() {
         assert_eq!(success, true);
     }
 }
+
+#[test]
+fn loop_fusion_indices() {
+
+    let code = "
+        |v:vec[i32]|
+            let intermediate = result(for(v, appender[i32], |b,i,e|
+                if (e > 0, merge(b, e), b)
+            ));
+            result(for(intermediate, appender[{i32,i64}], |b,i,e|
+                merge(b, {e, i})
+            ))
+    ";
+
+    #[allow(dead_code)]
+    struct Args {
+        v: WeldVec<i64>,
+    }
+
+    let ref conf = default_conf();
+    let v = [0, 1, 0, 0, 2];
+    let ref input_data = Args {
+        v: WeldVec::from(&v),
+    };
+
+    let ret_value = compile_and_run(code, conf, input_data);
+    let data = ret_value.data() as *const WeldVec<Pair<i64, i64>>;
+    let result = unsafe { (*data).clone() };
+
+    let expected = [Pair::new(1, 0), Pair::new(2, 1)];
+
+    assert_eq!(result.len, expected.len() as i64);
+    for i in 0..(expected.len() as isize) {
+        assert_eq!(
+            unsafe { *result.data.offset(i) },
+            expected[i as usize]
+        );
+    }
+
+}
